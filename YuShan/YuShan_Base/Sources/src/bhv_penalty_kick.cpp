@@ -78,7 +78,7 @@ Bhv_PenaltyKick::execute( PlayerAgent * agent )
     const WorldModel & wm = agent->world();
     const PenaltyKickState * state = wm.penaltyKickState();
 
-    switch ( wm.gameMode().type() ) {
+    switch ( wm.gameMode().type() ) { // 根据 bhv__penalty__kick 点球模式分别进行编码
     case GameMode::PenaltySetup_:
         if ( state->currentTakerSide() == wm.ourSide() )
         {
@@ -118,7 +118,7 @@ Bhv_PenaltyKick::execute( PlayerAgent * agent )
         {
             if ( state->isKickTaker( wm.ourSide(), wm.self().unum() ) )
             {
-                return doKicker( agent );
+                return doKicker( agent ); // 踢球者逻辑逻辑
             }
         }
         // their kick phase
@@ -126,7 +126,7 @@ Bhv_PenaltyKick::execute( PlayerAgent * agent )
         {
             if ( wm.self().goalie() )
             {
-                return doGoalie( agent );
+                return doGoalie( agent ); // 门将守门逻辑
             }
         }
         break;
@@ -152,11 +152,11 @@ Bhv_PenaltyKick::execute( PlayerAgent * agent )
 
     if ( wm.self().goalie() )
     {
-        return doGoalieWait( agent );
+        return doGoalieWait( agent ); // 门将等待逻辑
     }
     else
     {
-        return doKickerWait( agent );
+        return doKickerWait( agent ); // 踢球者等待逻辑
     }
 
     // never reach here
@@ -304,7 +304,9 @@ Bhv_PenaltyKick::doKickerReady( PlayerAgent * agent )
 
 /*-------------------------------------------------------------------*/
 /*!
-
+   球员执行点球的思路：
+   1. 不能踢球时，能截球则截，不符合截球条件时跑向球；
+   2. 符合射门条件则射门（比如，控球-即可踢时），不符合射门条件时，则通过 dribble 带球创造射门机会
  */
 bool
 Bhv_PenaltyKick::doKicker( PlayerAgent * agent )
@@ -319,22 +321,22 @@ Bhv_PenaltyKick::doKicker( PlayerAgent * agent )
     }
 
     //
-    // server allows multiple kicks
+    // server allows multiple kicks  // 如果server参数允许多步踢，则执行此逻辑
     //
 
     const WorldModel & wm = agent->world();
 
     // get ball
-    if ( ! wm.self().isKickable() )
+    if ( ! wm.self().isKickable() )  // 不可踢球则执行截球
     {
-        if ( ! Body_Intercept().execute( agent ) )
+        if ( ! Body_Intercept().execute( agent ) )  // 不可截球情况
         {
-            Body_GoToPoint( wm.ball().pos(),
+            Body_GoToPoint( wm.ball().pos(),  // 不能截球则跑向球
                             0.4,
                             ServerParam::i().maxDashPower()
                             ).execute( agent );
         }
-
+        // 颈部动作，关注球或关注门将
         if ( wm.ball().posCount() > 0 )
         {
             agent->setNeckAction( new Neck_TurnToBall() );
@@ -358,10 +360,10 @@ Bhv_PenaltyKick::doKicker( PlayerAgent * agent )
     // kick decision
     if ( doShoot( agent ) )
     {
-        return true;
+        return true;  // 能射门则进行射门！！！
     }
 
-    return doDribble( agent );
+    return doDribble( agent ); // 能带球则进行带球！！！
 }
 
 /*-------------------------------------------------------------------*/
@@ -445,7 +447,7 @@ Bhv_PenaltyKick::doOneKickShoot( PlayerAgent* agent )
  */
 bool
 Bhv_PenaltyKick::doShoot( PlayerAgent * agent )
-{
+{  // 时间快到时，直接射门
     const WorldModel & wm = agent->world();
     const PenaltyKickState * state = wm.penaltyKickState();
 
@@ -459,17 +461,17 @@ Bhv_PenaltyKick::doShoot( PlayerAgent * agent )
         return doOneKickShoot( agent );
     }
 
-    Vector2D shot_point;
-    double shot_speed;
+    Vector2D shot_point;  // 射门点
+    double shot_speed;   // 射门速度
 
-    if ( getShootTarget( agent, &shot_point, &shot_speed ) )
+    if ( getShootTarget( agent, &shot_point, &shot_speed ) )  // 获得射门点，计算速度
     {
         dlog.addText( Logger::TEAM,
                       __FILE__" (doShoot) shoot to (%.1f %.1f) speed=%f",
                       shot_point.x, shot_point.y,
                       shot_speed );
 
-        Body_SmartKick( shot_point,
+        Body_SmartKick( shot_point,  // 实施精细踢球
                         shot_speed,
                         shot_speed * 0.96,
                         2 ).execute( agent );
@@ -820,7 +822,8 @@ Bhv_PenaltyKick::doDribble( PlayerAgent * agent )
 #else
         bool dodge_mode = false;
 #endif
-        Body_Dribble2008( drib_target,
+        Body_Dribble2008( drib_target,  // 如何得到 drib_target目标点  drib_power带球力度
+                                       //          drib_dashes带球的球员发力 dodge_mode（是否进行晃人，该模块有带方向的dash计算）
                           2.0,
                           drib_power,
                           drib_dashes,
@@ -927,13 +930,14 @@ Bhv_PenaltyKick::doGoalieSetup( PlayerAgent * agent )
 
  */
 bool
+// 门将整体策略
 Bhv_PenaltyKick::doGoalie( PlayerAgent* agent )
 {
     const ServerParam & SP = ServerParam::i();
     const WorldModel & wm = agent->world();
 
     ///////////////////////////////////////////////
-    // check if catchabale
+    // check if catchabale 首先判断是否抓球，能抓球则抓球
     Rect2D our_penalty( Vector2D( -SP.pitchHalfLength(),
                                   -SP.penaltyAreaHalfWidth() + 1.0 ),
                         Size2D( SP.penaltyAreaLength() - 1.0,
@@ -946,7 +950,7 @@ Bhv_PenaltyKick::doGoalie( PlayerAgent* agent )
                       __FILE__": goalie try to catch" );
         return agent->doCatch();
     }
-
+    // 再判断能否踢球，可踢时发一步踢球的动作也可以，成功拦住球
     if ( wm.self().isKickable() )
     {
         Body_ClearBall().execute( agent );
@@ -971,7 +975,7 @@ Bhv_PenaltyKick::doGoalie( PlayerAgent* agent )
         }
     }
 
-    return doGoalieBasicMove( agent );
+    return doGoalieBasicMove( agent );  // 执行门将的 BasicMove 动作！！！
 }
 
 /*-------------------------------------------------------------------*/
@@ -979,7 +983,7 @@ Bhv_PenaltyKick::doGoalie( PlayerAgent* agent )
 
  */
 bool
-Bhv_PenaltyKick::doGoalieBasicMove( PlayerAgent * agent )
+Bhv_PenaltyKick::doGoalieBasicMove( PlayerAgent * agent )  // GoalieBasciMove 的函数实现
 {
     const ServerParam & SP = ServerParam::i();
     const WorldModel & wm = agent->world();
@@ -1005,7 +1009,7 @@ Bhv_PenaltyKick::doGoalieBasicMove( PlayerAgent * agent )
         if ( wm.interceptTable()->opponentReachCycle() < wm.interceptTable()-> selfReachCycle()
              || wm.interceptTable()-> selfReachCycle() <=4 )
         {
-            if ( Body_Intercept( false ).execute( agent ) )
+            if ( Body_Intercept( false ).execute( agent ) )  // 满足截球条件时，以截球方式向球的位置移动
             {
                 agent->debugClient().addMessage( "Intercept" );
                 dlog.addText( Logger::TEAM,
@@ -1032,7 +1036,7 @@ Bhv_PenaltyKick::doGoalieBasicMove( PlayerAgent * agent )
                                          SP.ballDecay() );
     }
 
-    move_pos = getGoalieMovePos( ball_pos, my_pos );
+    move_pos = getGoalieMovePos( ball_pos, my_pos );  // 获得门将的防守点
 
     dlog.addText( Logger::TEAM,
                   __FILE__": goalie basic move to (%.1f, %.1f)",
@@ -1055,7 +1059,7 @@ Bhv_PenaltyKick::doGoalieBasicMove( PlayerAgent * agent )
         {
             face_angle -= 90.0;
         }
-        Body_TurnToAngle( face_angle ).execute( agent );
+        Body_TurnToAngle( face_angle ).execute( agent );  // 到了防守点，横过来，便于防守！！！
     }
     agent->setNeckAction( new Neck_TurnToBall() );
 
@@ -1068,7 +1072,7 @@ Bhv_PenaltyKick::doGoalieBasicMove( PlayerAgent * agent )
   if ( onfiled_side != our_side ), these coordinates must be reversed.
 */
 Vector2D
-Bhv_PenaltyKick::getGoalieMovePos( const Vector2D & ball_pos,
+Bhv_PenaltyKick::getGoalieMovePos( const Vector2D & ball_pos,  // 该模型根据球的位置和我自己的位置，获得目标点 模型如何建立？？？
                                    const Vector2D & my_pos )
 {
     const ServerParam & SP = ServerParam::i();
